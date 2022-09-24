@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <vector>
+#include <time.h>
 
 int connectionThreshold(float givingCount, float connectionOutward, float receivingCount)
 {
@@ -11,7 +12,7 @@ int connectionThreshold(float givingCount, float connectionOutward, float receiv
 
 float RandFloat()
 {
-    float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+    float r = static_cast<float>(rand()) / static_cast <float> (RAND_MAX);
     return r;
 }
 
@@ -139,6 +140,8 @@ public:
 
                 float randomFloat = RandFloat();
 
+                std::cout << randomFloat << std::endl;
+
                 Connection connection(n, t, randomFloat);
                 from->conn.push_back(connection);
             }
@@ -173,6 +176,8 @@ public:
 
 int main()
 {
+    srand(time(0) * time(0) * time(0));
+
     Network network(2, 1, 2, 1);
     network.ConnectAllLayers(2, 1, 1);
 
