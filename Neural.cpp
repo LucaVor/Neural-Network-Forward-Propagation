@@ -138,7 +138,6 @@ public:
                 }
 
                 float randomFloat = RandFloat();
-                randomFloat = 0.5;
 
                 Connection connection(n, t, randomFloat);
                 from->conn.push_back(connection);
@@ -179,7 +178,7 @@ int main()
 
     std::vector<float> inputs;
     inputs.push_back(1);
-    inputs.push_back(0.5F);
+    inputs.push_back(1);
 
     std::vector<float> output = network.GoForward(inputs);
     std::cout << network.layers[2].conn.size() << std::endl;
