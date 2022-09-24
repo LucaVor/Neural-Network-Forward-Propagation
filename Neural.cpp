@@ -178,8 +178,8 @@ int main()
 {
     srand(time(0) * time(0) * time(0));
 
-    Network network(2, 1, 2, 1);
-    network.ConnectAllLayers(2, 1, 1);
+    Network network(3, 2, 4, 2);
+    network.ConnectAllLayers(2, 2, 1);
 
     std::vector<float> inputs;
     inputs.push_back(1);
