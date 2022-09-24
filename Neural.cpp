@@ -38,15 +38,15 @@ public:
     std::vector<float> neurons;
     std::vector<Connection> conn;
 
-    Layer(int layerSize, int layerIndex)
+    int bias;
+
+    Layer(int layerSize, int layerIndex, int bias)
     {
         this->layerSize = layerSize;
         this->layerIndex = layerIndex;
 
         InstantiateBlankNeurons();
     }
-    
-    int bias;
 
     void InstantiateBlankNeurons()
     {
@@ -75,18 +75,18 @@ public:
     {
         outputIndex = hiddenLayerCount + 2;
 
-        Layer inputLayer(inputCount, 0);
+        Layer inputLayer(inputCount, 0, 0);
 
         layers.push_back(inputLayer);
 
         for (int n = 0; n < hiddenLayerCount; n++)
         {
-            Layer hiddenLayer(hiddenLayerSize, n + 1);
+            Layer hiddenLayer(hiddenLayerSize, n + 1, 0);
 
             layers.push_back(hiddenLayer);
         }
 
-        Layer outputLayer(outputCount, hiddenLayerCount + 2);
+        Layer outputLayer(outputCount, hiddenLayerCount + 2, 0);
 
         layers.push_back(outputLayer);
     }
@@ -155,7 +155,7 @@ public:
 
             for (n = 0; n < layers[j].neurons.size(); n++)
             {
-                layers[j].neurons[n] = 0;
+                layers[j].neurons[n] = layers[j].bias;
             }
 
             for (n = 0; n < layers[j - 1].conn.size(); n++)
