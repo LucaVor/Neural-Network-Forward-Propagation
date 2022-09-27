@@ -12,50 +12,92 @@ O O O
   O
 */
 
-#include <iostream>
-#include <vector>
+#include "mnist-master/include/mnist/mnist_reader_less.hpp"
 #include <time.h>
+#include <algorithm>
+#include <random>
+#include <math.h>
 
 // Calculate the maximum number of connections a neuron can have going into the "dendrites"
-int connectionThreshold(float givingCount, float connectionOutward, float receivingCount)
+int connectionThreshold(double givingCount, double connectionOutward, double receivingCount)
 {
     return round((connectionOutward * givingCount) / receivingCount);
 }
 
 // Calculate the cost of any observed value relative to it's desired value
-float calculateCost(float observed, float desired)
+double calculateCost(double observed, double desired)
 {
-    float err = observed - desired;
+    double err = observed - desired;
     return err * err;
 }
 
-// Return a random number from 0-1, later being changed to other ranges using the linear
-// interpolation function a + (b - a) * t
 
-float RandFloat()
+int clamp(int v, int min, int max)
 {
-    float r = static_cast<float>(rand()) / static_cast <float> (RAND_MAX);
+    if (v < min)
+    {
+        return min;
+    } if (v > max)
+    {
+        return max;
+    } return v;
+}
+
+double sigmoid(double x)
+{
+    return 1 / (1 + exp(-x));
+}
+
+double Randdouble()
+{
+    double r = static_cast<double>(rand()) / static_cast <double> (RAND_MAX);
     return r;
 }
 
-// Stores basic values of a connection like what the weight is, and who it's connecting
+double randomWeight()
+{
+    const double PI = 3.1415926;
 
+    double x1 = 1 - Randdouble();
+    double x2 = 1 - Randdouble();
+
+    double y1 = sqrt(-2 * log(x1)) * cos(2 * PI * x2);
+    return y1 * 1 + 0;
+}
+
+int RandInt(int min, int max)
+{
+    return static_cast<int>(round(min + (max - min) * Randdouble()));
+}
+
+// Stores position in matrix
+struct Vertex
+{
+    int x;
+    int y;
+};
+
+// Stores basic values of a connection like what the weight is, and who it's connecting
 struct Connection
 {
 public:
     // Neuron giving signal
     int from;
     // Weight of connection
-    float weight;
+    double weight;
     // Neuron receiving signal
     int to;
+    // Position in gradient matrix
+    Vertex vertex;
 
     // Simply instantiates values
-    Connection(int from, int to, float weight)
+    Connection(int from, int to, double weight, int x, int y)
     {
         this->from = from;
         this->to = to;
         this->weight = weight;
+        vertex.x = x;
+        vertex.y = y;
     }
 };
 
@@ -70,11 +112,11 @@ public:
     // Which layer it is, input would be 0, first hidden 1...
     int layerIndex;
     // Activation value of each neuron
-    std::vector<float> neurons;
+    std::vector<double> neurons;
     // List of all connections in layer, these are the incoming from previous layer
     std::vector<Connection> conn;
     // Bias of each individual neuron
-    std::vector<float> biases;
+    std::vector<double> biases;
 
     // Instantiate values
     Layer(int layerSize, int layerIndex, int bias)
@@ -130,9 +172,9 @@ public:
     int outputIndex;
 
     // The gradient of each individual weight, 2 dimensional
-    std::vector<std::vector<float>> gradientW;
+    std::vector<std::vector<double>> gradientW;
     // The gradient of each individual bias, 2 dimensional
-    std::vector<std::vector<float>> gradientB;
+    std::vector<std::vector<double>> gradientB;
 
     // Instantiate entire network
     // inputCount: The number of input neurons
@@ -163,13 +205,16 @@ public:
         Layer outputLayer(outputCount, hiddenLayerCount + 1, 0);
 
         layers.push_back(outputLayer);
+    }
 
+    void InitGradients()
+    {
         // Loop through all layers skipping the input layer since it has no incoming connections
-        for (int x = 1; x < layers.size(); x++)
+        for (int x = 0; x < layers.size(); x++)
         {
             // Create second dimension list for both weights and biases
-            std::vector<float> innerW;
-            std::vector<float> innerB;
+            std::vector<double> innerW;
+            std::vector<double> innerB;
 
             int y;
 
@@ -227,6 +272,8 @@ public:
         // How many times another neuron has been connected to, used to prevent neuron connection stacking
         std::vector<int> connCount;
         int n;
+        // To find curr index of connection
+        int connectionsFormed = 0;
 
         // Set list for every neuron in receving layer, set as 0
         for (n = 0; n < to->neurons.size(); n++)
@@ -278,10 +325,16 @@ public:
                 connCount[minIndex] = connCount[minIndex] + 1;
 
                 // Get random weight
-                float randomFloat = RandFloat(); // make it from -25, to 25
+                double randomdouble = (Randdouble() * 2) - 1; // make it from -25, to 25
+
+                randomdouble = randomWeight() / sqrt(from->layerSize);
 
                 // Make connection
-                Connection connection(n, minIndex, randomFloat);
+                Connection connection(n, minIndex, randomdouble, from->layerIndex, connectionsFormed);
+                
+                std::cout << "Connecting " << n << " to " << minIndex << " on layer " << from->layerIndex << std::endl;
+
+                connectionsFormed++;
 
                 // Add connection
                 from->conn.push_back(connection);
@@ -296,7 +349,7 @@ public:
     }
 
     // Forward Propagation
-    std::vector<float> GoForward(std::vector<float> inputs)
+    std::vector<double> GoForward(std::vector<double> inputs)
     {
         // Set the neuron values of input layers to the inputs parameter
         layers[0].neurons = inputs;
@@ -317,20 +370,27 @@ public:
             for (n = 0; n < layers[j - 1].conn.size(); n++)
             {
                 // Find the activation of the previous layers neuron
-                float power = layers[j - 1].neurons[layers[j - 1].conn[n].from];
+                double power = layers[j - 1].neurons[layers[j - 1].conn[n].from];
                 // Find the weight of the connection
-                float weight = layers[j - 1].conn[n].weight;
+                double weight = layers[j - 1].conn[n].weight;
                 // Add the two values multiplied to the receving neurons activation
                 layers[j].neurons[layers[j - 1].conn[n].to] += power * weight;
+            }
+
+            for (n = 0; n < layers[j].layerSize; n++)
+            {
+                layers[j].neurons[n] = sigmoid(layers[j].neurons[n]);
             }
         }
 
         return layers[outputIndex].neurons;
     }
 
-    float Cost(std::vector<float> desired)
+    double Cost(std::vector<double> inputs, std::vector<double> desired)
     {
-        float cost = 0;
+        GoForward(inputs);
+
+        double cost = 0;
 
         // Summate costs of the output and the desired output
         for (int j = 0; j < layers[outputIndex].layerSize; j++)
@@ -340,17 +400,155 @@ public:
 
         return cost;
     }
+
+    double RecalculateCostOfTrainingData(std::vector<std::vector<double>> trainingData, std::vector<std::vector<double>> desiredData)
+    {
+        double cost = 0;
+
+        for (int i = 0; i < trainingData.size(); i++)
+        {
+            cost += Cost(trainingData[i], desiredData[i]);
+        }
+
+        return cost;
+    }
 };
+
+double testParabola(double x)
+{
+    return (-0.3 * x * x) + (0.8 * x) + 9.6;
+}
+
+double step(double a, double b)
+{
+    return a > b ? 1 : 0;
+}
 
 int main()
 {
-    srand(time(0) * time(0) * time(0));
+    //srand(time(0) * time(0) * time(0));
 
     //Network(int inputCount, int hiddenLayerCount, int hiddenLayerSize, int outputCount)
 
-    Network network(2, 1, 4, 1);
+    Network network(2, 1, 3, 2);
 
     //ConnectAllLayers(int inputToHidden, int hiddenToHidden, int hiddenToOutput)
-    network.ConnectAllLayers(4, 4, 1);
+    network.ConnectAllLayers(3, 3, 2);
+    network.InitGradients();
 
+    std::vector<std::vector<double>> trainingData;
+    std::vector<std::vector<double>> answers;
+
+    for (double x = -20; x <= 20; x+=1)
+    {
+        for (double y = -20; y <= 20; y+=1)
+        {
+            double xOffset = Randdouble() * 2 - 1;
+            double yOffset = Randdouble() * 2 - 1;
+
+            double newX = x + xOffset;
+            double newY = y + yOffset;
+
+            std::vector<double> data{ newX, newY };
+            std::vector<double> answer;
+
+            if (newY < testParabola(newX))
+            {
+                answer.push_back(1);
+                answer.push_back(0);
+            }
+            else {
+                answer.push_back(0);
+                answer.push_back(1);
+            }
+
+            trainingData.push_back(data);
+            answers.push_back(answer);
+        }
+    }
+
+    //auto dataset = mnist::read_dataset<double, double>();
+
+    //std::vector<std::vector<double>> trainingData = dataset.training_images;
+    //std::vector<std::vector<double>> answers;
+    //std::vector<double> reg_answers = dataset.training_labels;
+
+    //for (double answer : reg_answers)
+    //{
+    //    std::vector<double> vec_answer;
+    //    vec_answer.push_back(answer);
+    //    answers.push_back(vec_answer);
+    //}
+
+    std::cout << "Cost: " << network.RecalculateCostOfTrainingData(trainingData, answers) << std::endl;
+
+    const double h = 0.0001;
+
+    for (int epoch = 0; epoch < 20000; epoch++) {
+        int starting = RandInt(0, 4-1);
+        
+        double originalCost = network.RecalculateCostOfTrainingData(trainingData, answers);
+
+        for (int j = 0; j < network.outputIndex; j++)
+        {
+            for (int k = 0; k < network.layers[j].conn.size(); k++)
+            {
+
+                network.layers[j].conn[k].weight += h;
+                double deltaCost = network.RecalculateCostOfTrainingData(trainingData, answers) - originalCost;
+                network.layers[j].conn[k].weight -= h;
+
+                network.gradientW[j][k] = deltaCost / h;
+            }
+
+            for (int k = 0; k < network.layers[j].biases.size(); k++)
+            {
+                network.layers[j].biases[k] += h;
+                double deltaCost = network.RecalculateCostOfTrainingData(trainingData, answers) - originalCost;
+                network.layers[j].biases[k] -= h;
+
+                network.gradientB[j][k] = deltaCost / h;
+            }
+        }
+
+        double learnRate = 0.1;
+
+        for (int j = 0; j < network.outputIndex; j++)
+        {
+            for (int k = 0; k < network.layers[j].conn.size(); k++)
+            {
+                network.layers[j].conn[k].weight -= network.gradientW[j][k] * learnRate;
+            }
+
+            for (int k = 0; k < network.layers[j].biases.size(); k++)
+            {
+                network.layers[j].biases[k] -= network.gradientB[j][k] * learnRate;
+            }
+        }
+    }
+
+    for (int c = 0; c < trainingData.size(); c++)
+    {
+        std::vector<double> output = network.GoForward(trainingData[c]);
+        std::cout << step(output[0], output[1]) << " : " << answers[c][0] << std::endl;
+    }
+
+    std::cout << "Cost: " << network.RecalculateCostOfTrainingData(trainingData, answers) << std::endl;
+
+    while (true)
+    {
+        double x;
+        double y;
+
+        std::cin >> x;
+        std::cin >> y;
+
+        std::vector<double> inputs{ x, y };
+
+        bool realResult = y < testParabola(x);
+        std::vector<double> output = network.GoForward(inputs);
+        bool result = step(output[0], output[1]);
+
+        std::cout << "Result: " << result << " is " << realResult << std::endl;
+    }
 }
