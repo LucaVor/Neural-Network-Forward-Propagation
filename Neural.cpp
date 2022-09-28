@@ -12,7 +12,6 @@ O O O
   O
 */
 
-#include "mnist-master/include/mnist/mnist_reader_less.hpp"
 #include <time.h>
 #include <algorithm>
 #include <random>
@@ -426,7 +425,11 @@ double step(double a, double b)
 
 int main()
 {
-    //srand(time(0) * time(0) * time(0));
+    int seed = time(0);
+
+    srand(seed);
+
+    std::cout << "Seed " << seed << std::endl;
 
     //Network(int inputCount, int hiddenLayerCount, int hiddenLayerSize, int outputCount)
 
@@ -436,22 +439,34 @@ int main()
     network.ConnectAllLayers(3, 3, 2);
     network.InitGradients();
 
-    std::vector<std::vector<double>> trainingData;
-    std::vector<std::vector<double>> answers;
+    // All of the raw training data
+    std::vector<std::vector<double>> unbatched_trainingData;
+    // The desired output of the training data
+    std::vector<std::vector<double>> unbatched_answers;
+    // All of the batches of training data
+    std::vector<std::vector<std::vector<double>>> trainingDataBatches;
+    // All of the batches of the desired output of the training data
+    std::vector<std::vector<std::vector<double>>> trainingAnswerBatches;
 
-    for (double x = -20; x <= 20; x+=1)
+    // Looping through a grid of x: 0-10 and y: 0-10
+    for (double x = 0; x <= 10; x+=1)
     {
-        for (double y = -20; y <= 20; y+=1)
+        for (double y = 0; y <= 10; y+=1)
         {
+            // Add an offset to the x and y's to slightly randomize it
             double xOffset = Randdouble() * 2 - 1;
             double yOffset = Randdouble() * 2 - 1;
+            xOffset *= 0.5;
+            yOffset *= 0.5;
 
             double newX = x + xOffset;
             double newY = y + yOffset;
 
+            // Create datapoint
             std::vector<double> data{ newX, newY };
             std::vector<double> answer;
 
+            // Calculate desired output
             if (newY < testParabola(newX))
             {
                 answer.push_back(1);
@@ -462,9 +477,40 @@ int main()
                 answer.push_back(1);
             }
 
-            trainingData.push_back(data);
-            answers.push_back(answer);
+            // Add it to the unbatched training data
+            unbatched_trainingData.push_back(data);
+            unbatched_answers.push_back(answer);
         }
+    }
+
+    // How large each batch is
+    int batchSize = 10;
+    int iterator = 1;
+
+    // The current batch it is adding to
+    std::vector<std::vector<double>> currentDataBatch;
+    std::vector<std::vector<double>> currentAnswerBatch;
+    
+    // Loop through every datapoint
+    for (int dataPoint = 0; dataPoint < unbatched_trainingData.size(); dataPoint++)
+    {
+        // Adding current datatpoint to current batch
+        currentDataBatch.push_back(unbatched_trainingData[dataPoint]);
+        currentAnswerBatch.push_back(unbatched_answers[dataPoint]);
+
+        // If it has reached nth datapoint
+        if (iterator % batchSize == 0)
+        {
+            // Add current batch to all batches
+            trainingDataBatches.push_back(currentDataBatch);
+            trainingAnswerBatches.push_back(currentAnswerBatch);
+            // Clear current batches to add new values
+            currentDataBatch.clear();
+            currentAnswerBatch.clear();
+        }
+
+        // Enumerate
+        iterator++;
     }
 
     //auto dataset = mnist::read_dataset<double, double>();
@@ -480,60 +526,66 @@ int main()
     //    answers.push_back(vec_answer);
     //}
 
-    std::cout << "Cost: " << network.RecalculateCostOfTrainingData(trainingData, answers) << std::endl;
+    // Small value
+    const double h = 0.00001;
+    // Coefficient
+    double learnRate = 0.2;
+    // Number of epochs
+    int epochCount = 100000;
 
-    const double h = 0.0001;
+    std::cout << "Size: " << trainingDataBatches.size() << std::endl;
 
-    for (int epoch = 0; epoch < 20000; epoch++) {
-        int starting = RandInt(0, 4-1);
-        
-        double originalCost = network.RecalculateCostOfTrainingData(trainingData, answers);
-
-        for (int j = 0; j < network.outputIndex; j++)
+    for (int epoch = 0; epoch < epochCount; epoch++) {
+        if (epoch % 100 == 0)
         {
-            for (int k = 0; k < network.layers[j].conn.size(); k++)
-            {
-
-                network.layers[j].conn[k].weight += h;
-                double deltaCost = network.RecalculateCostOfTrainingData(trainingData, answers) - originalCost;
-                network.layers[j].conn[k].weight -= h;
-
-                network.gradientW[j][k] = deltaCost / h;
-            }
-
-            for (int k = 0; k < network.layers[j].biases.size(); k++)
-            {
-                network.layers[j].biases[k] += h;
-                double deltaCost = network.RecalculateCostOfTrainingData(trainingData, answers) - originalCost;
-                network.layers[j].biases[k] -= h;
-
-                network.gradientB[j][k] = deltaCost / h;
-            }
+            std::cout << epoch << " epoch Cost: " << network.RecalculateCostOfTrainingData(unbatched_trainingData, unbatched_answers) << std::endl;
         }
 
-        double learnRate = 0.1;
-
-        for (int j = 0; j < network.outputIndex; j++)
+        for (int currentBatch = 0; currentBatch < trainingDataBatches.size(); currentBatch++)
         {
-            for (int k = 0; k < network.layers[j].conn.size(); k++)
+            std::vector<std::vector<double>> trainingData = trainingDataBatches[currentBatch];
+            std::vector<std::vector<double>> answers = trainingAnswerBatches[currentBatch];
+
+            double originalCost = network.RecalculateCostOfTrainingData(trainingData, answers);
+
+            for (int j = 0; j < network.outputIndex; j++)
             {
-                network.layers[j].conn[k].weight -= network.gradientW[j][k] * learnRate;
+                for (int k = 0; k < network.layers[j].conn.size(); k++)
+                {
+
+                    network.layers[j].conn[k].weight += h;
+                    double deltaCost = network.RecalculateCostOfTrainingData(trainingData, answers) - originalCost;
+                    network.layers[j].conn[k].weight -= h;
+
+                    network.gradientW[j][k] = deltaCost / h;
+                }
+
+                for (int k = 0; k < network.layers[j].biases.size(); k++)
+                {
+                    network.layers[j].biases[k] += h;
+                    double deltaCost = network.RecalculateCostOfTrainingData(trainingData, answers) - originalCost;
+                    network.layers[j].biases[k] -= h;
+
+                    network.gradientB[j][k] = deltaCost / h;
+                }
             }
 
-            for (int k = 0; k < network.layers[j].biases.size(); k++)
+            for (int j = 0; j < network.outputIndex; j++)
             {
-                network.layers[j].biases[k] -= network.gradientB[j][k] * learnRate;
+                for (int k = 0; k < network.layers[j].conn.size(); k++)
+                {
+                    network.layers[j].conn[k].weight -= (network.gradientW[j][k] * learnRate);
+                }
+
+                for (int k = 0; k < network.layers[j].biases.size(); k++)
+                {
+                    network.layers[j].biases[k] -= (network.gradientB[j][k] * learnRate);
+                }
             }
         }
     }
 
-    for (int c = 0; c < trainingData.size(); c++)
-    {
-        std::vector<double> output = network.GoForward(trainingData[c]);
-        std::cout << step(output[0], output[1]) << " : " << answers[c][0] << std::endl;
-    }
-
-    std::cout << "Cost: " << network.RecalculateCostOfTrainingData(trainingData, answers) << std::endl;
+    std::cout << "Total cost: " << network.RecalculateCostOfTrainingData(unbatched_trainingData, unbatched_answers) << std::endl;
 
     while (true)
     {
